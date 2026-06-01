@@ -1,0 +1,170 @@
+version: '3.9'
+
+services:
+
+  # ── Infrastructure ────────────────────────────────────────────────────────
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"   # accès depuis le host
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Deux listeners : EXTERNAL (host→9092) et INTERNAL (containers→29092)
+      KAFKA_LISTENERS: EXTERNAL://0.0.0.0:9092,INTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://localhost:9092,INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1   # 1 broker en local
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"     # topics créés explicitement
+      KAFKA_LOG_RETENTION_HOURS: 24
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Crée les 3 topics au démarrage (one-shot, ne redémarre pas)
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        kafka-topics --create --if-not-exists \
+          --bootstrap-server kafka:29092 \
+          --partitions 3 --replication-factor 1 \
+          --topic raw-prices
+
+        kafka-topics --create --if-not-exists \
+          --bootstrap-server kafka:29092 \
+          --partitions 3 --replication-factor 1 \
+          --topic validated-prices
+
+        kafka-topics --create --if-not-exists \
+          --bootstrap-server kafka:29092 \
+          --partitions 3 --replication-factor 1 \
+          --topic dead-letter
+
+        echo "--- Topics créés ---"
+        kafka-topics --bootstrap-server kafka:29092 --list
+    restart: "no"
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: pricepulse
+      POSTGRES_USER: pp_user
+      POSTGRES_PASSWORD: pp_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pp_user -d pricepulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── App services (décommenter au fur et à mesure des étapes) ─────────────
+
+  # consumer-normalisation:
+  #   build: ./consumers/normalisation
+  #   environment:
+  #     KAFKA_BOOTSTRAP: kafka:29092
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # consumer-postgres:
+  #   build: ./consumers/postgres
+  #   environment:
+  #     KAFKA_BOOTSTRAP: kafka:29092
+  #     DATABASE_URL: postgresql://pp_user:pp_pass@postgres:5432/pricepulse
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # consumer-bigquery:
+  #   build: ./consumers/bigquery
+  #   environment:
+  #     KAFKA_BOOTSTRAP: kafka:29092
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # api:
+  #   build: ./api
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     DATABASE_URL: postgresql://pp_user:pp_pass@postgres:5432/pricepulse
+  #     KAFKA_BOOTSTRAP: kafka:29092
+  #     REDIS_URL: redis://redis:6379
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # nifi:                                # étape 6
+  #   image: apache/nifi:1.24.0
+  #   ports:
+  #     - "8443:8443"
+  #   environment:
+  #     SINGLE_USER_CREDENTIALS_USERNAME: admin
+  #     SINGLE_USER_CREDENTIALS_PASSWORD: adminadminadmin
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+
+  # airflow:                             # étape 9
+  #   image: apache/airflow:2.8.0
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  #     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://pp_user:pp_pass@postgres:5432/pricepulse
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:
