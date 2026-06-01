@@ -1,0 +1,77 @@
+{
+  "name": "PricePulse — ingestion HTTP → Kafka",
+  "nifi_version": "1.24.0",
+  "description": "Reçoit les POSTs des scrapers, route vers raw-prices ou dead-letter selon la validité du message.",
+
+  "processors": [
+    {
+      "name": "ListenHTTP",
+      "type": "org.apache.nifi.processors.standard.ListenHTTP",
+      "position": { "x": 0, "y": 0 },
+      "config": {
+        "Base Path": "contentListener",
+        "Listening Port": "8082"
+      },
+      "relationships_out": ["success"]
+    },
+    {
+      "name": "EvaluateJsonPath",
+      "type": "org.apache.nifi.processors.standard.EvaluateJsonPath",
+      "position": { "x": 0, "y": 200 },
+      "config": {
+        "Destination": "flowfile-attribute",
+        "price_raw":   "$.price_raw",
+        "source":      "$.source",
+        "product_id":  "$.product_id"
+      },
+      "relationships_out": ["matched", "unmatched", "failure"]
+    },
+    {
+      "name": "RouteOnAttribute",
+      "type": "org.apache.nifi.processors.standard.RouteOnAttribute",
+      "position": { "x": 0, "y": 400 },
+      "config": {
+        "Routing Strategy": "Route to Property name",
+        "to-kafka": "${price_raw:isEmpty():not():and(${source:in('amazon','fnac','cdiscount')})}"
+      },
+      "routing_notes": {
+        "to-kafka":   "price_raw non vide ET source connue → raw-prices",
+        "unmatched":  "tout le reste → dead-letter"
+      },
+      "relationships_out": ["to-kafka", "unmatched"]
+    },
+    {
+      "name": "PublishKafka [raw-prices]",
+      "type": "org.apache.nifi.processors.kafka.pubsub.PublishKafka_2_6",
+      "position": { "x": 300, "y": 600 },
+      "config": {
+        "bootstrap.servers": "kafka:29092",
+        "topic":             "raw-prices",
+        "kafka-key":         "${source}",
+        "acks":              "all"
+      },
+      "relationships_out": ["success", "failure"]
+    },
+    {
+      "name": "PublishKafka [dead-letter]",
+      "type": "org.apache.nifi.processors.kafka.pubsub.PublishKafka_2_6",
+      "position": { "x": -300, "y": 600 },
+      "config": {
+        "bootstrap.servers": "kafka:29092",
+        "topic":             "dead-letter",
+        "kafka-key":         "${source}",
+        "acks":              "all"
+      },
+      "relationships_out": ["success", "failure"]
+    }
+  ],
+
+  "connections": [
+    { "from": "ListenHTTP",       "relationship": "success",   "to": "EvaluateJsonPath" },
+    { "from": "EvaluateJsonPath", "relationship": "matched",   "to": "RouteOnAttribute" },
+    { "from": "EvaluateJsonPath", "relationship": "unmatched", "to": "PublishKafka [dead-letter]" },
+    { "from": "EvaluateJsonPath", "relationship": "failure",   "to": "PublishKafka [dead-letter]" },
+    { "from": "RouteOnAttribute", "relationship": "to-kafka",  "to": "PublishKafka [raw-prices]" },
+    { "from": "RouteOnAttribute", "relationship": "unmatched", "to": "PublishKafka [dead-letter]" }
+  ]
+}
