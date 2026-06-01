@@ -97,8 +97,10 @@ services:
 
   # ── App services (décommenter au fur et à mesure des étapes) ─────────────
 
+  # ── COMMAND side ─────────────────────────────────────────────────────────
+
   # consumer-normalisation:
-  #   build: ./consumers/normalisation
+  #   build: ./command/consumers/normalisation
   #   environment:
   #     KAFKA_BOOTSTRAP: kafka:29092
   #   depends_on:
@@ -107,7 +109,7 @@ services:
   #   restart: unless-stopped
 
   # consumer-postgres:
-  #   build: ./consumers/postgres
+  #   build: ./command/consumers/postgres
   #   environment:
   #     KAFKA_BOOTSTRAP: kafka:29092
   #     DATABASE_URL: postgresql://pp_user:pp_pass@postgres:5432/pricepulse
@@ -119,7 +121,7 @@ services:
   #   restart: unless-stopped
 
   # consumer-bigquery:
-  #   build: ./consumers/bigquery
+  #   build: ./command/consumers/bigquery
   #   environment:
   #     KAFKA_BOOTSTRAP: kafka:29092
   #   depends_on:
@@ -127,8 +129,10 @@ services:
   #       condition: service_healthy
   #   restart: unless-stopped
 
+  # ── QUERY side ────────────────────────────────────────────────────────────
+
   # api:
-  #   build: ./api
+  #   build: ./query/api
   #   ports:
   #     - "8000:8000"
   #   environment:

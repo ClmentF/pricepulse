@@ -1,0 +1,34 @@
+# ── Specs / docs internes ─────────────────────────────────────────────────
+PRICEPULSE_SPECS.md
+
+# ── Secrets & credentials ─────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+gcp-credentials*.json
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# ── Scrapy ────────────────────────────────────────────────────────────────
+.scrapy/
+
+# ── Docker ────────────────────────────────────────────────────────────────
+*.log
+
+# ── OS ────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
