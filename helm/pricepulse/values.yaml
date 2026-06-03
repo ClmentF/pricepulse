@@ -1,0 +1,75 @@
+# Valeurs par défaut — surchargées par values.dev.yaml ou values.prod.yaml
+
+gcp:
+  project: pricepulse-gcp
+  region: europe-west1
+  # Nom de connexion Cloud SQL : projet:région:instance
+  cloudSqlInstance: pricepulse-gcp:europe-west1:pricepulse-pg
+  # Compte de service GCP lié au ServiceAccount K8s (Workload Identity)
+  serviceAccountEmail: pricepulse-sa@pricepulse-gcp.iam.gserviceaccount.com
+
+registry: europe-west1-docker.pkg.dev/pricepulse-gcp
+
+kafka:
+  replicas: 1
+  storage: 5Gi
+  bootstrapServers: kafka-0.kafka:9092
+  config:
+    replicationFactor: 1
+    minInsyncReplicas: 1
+    numPartitions: 3
+
+redis:
+  storage: 1Gi
+
+fastapi:
+  replicas: 1
+  image:
+    repository: europe-west1-docker.pkg.dev/pricepulse-gcp/api
+    tag: latest
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+  hpa:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+consumers:
+  normalisation:
+    image:
+      repository: europe-west1-docker.pkg.dev/pricepulse-gcp/consumer-normalisation
+      tag: latest
+  postgres:
+    image:
+      repository: europe-west1-docker.pkg.dev/pricepulse-gcp/consumer-postgres
+      tag: latest
+  bigquery:
+    image:
+      repository: europe-west1-docker.pkg.dev/pricepulse-gcp/consumer-bigquery
+      tag: latest
+
+airflow:
+  image:
+    repository: europe-west1-docker.pkg.dev/pricepulse-gcp/airflow
+    tag: latest
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+# Secrets — NE PAS RENSEIGNER ICI
+# Créer helm/pricepulse/values.secret.yaml (gitignored) avec ces clés
+secrets:
+  databaseUrl: ""
+  sendgridApiKey: ""
+  slackWebhookUrl: ""
+  gcsSnapshotBucket: "pricepulse-snapshots"

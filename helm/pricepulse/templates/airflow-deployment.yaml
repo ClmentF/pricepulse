@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow
+  labels:
+    {{- include "pricepulse.labels" . | nindent 4 }}
+    app: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow
+  template:
+    metadata:
+      labels:
+        app: airflow
+    spec:
+      serviceAccountName: pricepulse-workload-sa
+      containers:
+        - name: airflow
+          image: {{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: pricepulse-secrets
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: LocalExecutor
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: pricepulse-secrets
+                  key: DATABASE_URL
+            - name: KAFKA_BOOTSTRAP
+              value: {{ include "pricepulse.kafkaBootstrap" . }}
+            - name: BIGQUERY_PROJECT
+              value: {{ .Values.gcp.project }}
+            - name: SCRAPERS_BASE_DIR
+              value: /opt/airflow/command/scrapers
+          resources:
+            {{- toYaml .Values.airflow.resources | nindent 12 }}
+
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - {{ .Values.gcp.cloudSqlInstance | quote }}
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"

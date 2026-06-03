@@ -1,0 +1,18 @@
+kafka:
+  replicas: 1
+  storage: 2Gi
+  config:
+    replicationFactor: 1
+    minInsyncReplicas: 1
+
+fastapi:
+  replicas: 1
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+  hpa:
+    enabled: false

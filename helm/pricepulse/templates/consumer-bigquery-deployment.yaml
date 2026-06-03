@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer-bigquery
+  labels:
+    {{- include "pricepulse.labels" . | nindent 4 }}
+    app: consumer-bigquery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consumer-bigquery
+  template:
+    metadata:
+      labels:
+        app: consumer-bigquery
+    spec:
+      serviceAccountName: pricepulse-workload-sa
+      containers:
+        - name: consumer-bigquery
+          image: {{ .Values.consumers.bigquery.image.repository }}:{{ .Values.consumers.bigquery.image.tag }}
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: {{ include "pricepulse.kafkaBootstrap" . }}
+            - name: BIGQUERY_PROJECT
+              value: {{ .Values.gcp.project }}
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"

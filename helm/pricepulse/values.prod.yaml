@@ -1,0 +1,22 @@
+kafka:
+  replicas: 3
+  storage: 20Gi
+  config:
+    replicationFactor: 3
+    minInsyncReplicas: 2
+    numPartitions: 3
+
+fastapi:
+  replicas: 2
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70

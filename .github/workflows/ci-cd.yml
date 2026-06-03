@@ -1,0 +1,121 @@
+name: CI/CD PricePulse
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  GCP_REGION: europe-west1
+  GCP_PROJECT: pricepulse-gcp
+  REGISTRY: europe-west1-docker.pkg.dev/pricepulse-gcp
+
+jobs:
+
+  # ── 1. Lint ────────────────────────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff
+      - run: ruff check .
+
+  # ── 2. Tests ───────────────────────────────────────────────────────────────
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: pricepulse
+          POSTGRES_USER: pp_user
+          POSTGRES_PASSWORD: pp_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest
+      - run: pip install -r command/consumers/normalisation/requirements.txt
+      - run: pip install -r command/consumers/postgres/requirements.txt
+      - run: |
+          if [ -d tests ]; then pytest tests/ -v; else echo "No tests yet"; fi
+        env:
+          DATABASE_URL: postgresql://pp_user:pp_pass@localhost:5432/pricepulse
+
+  # ── 3. Build & push (main seulement) ──────────────────────────────────────
+  build:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - name: api
+            context: ./query/api
+          - name: consumer-normalisation
+            context: ./command/consumers/normalisation
+          - name: consumer-postgres
+            context: ./command/consumers/postgres
+          - name: consumer-bigquery
+            context: ./command/consumers/bigquery
+          - name: airflow
+            context: ./airflow
+    steps:
+      - uses: actions/checkout@v4
+
+      # Auth GCP via Workload Identity Federation — zéro clé de service
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker pour Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      - name: Build & push ${{ matrix.service.name }}
+        run: |
+          IMAGE=${{ env.REGISTRY }}/${{ matrix.service.name }}:${{ github.sha }}
+          docker build -t $IMAGE ${{ matrix.service.context }}
+          docker push $IMAGE
+
+  # ── 4. Deploy sur GKE ─────────────────────────────────────────────────────
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: pricepulse-cluster
+          location: ${{ env.GCP_REGION }}
+
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install pricepulse ./helm/pricepulse \
+            -f helm/pricepulse/values.prod.yaml \
+            --set fastapi.image.tag=${{ github.sha }} \
+            --set consumers.normalisation.image.tag=${{ github.sha }} \
+            --set consumers.postgres.image.tag=${{ github.sha }} \
+            --set consumers.bigquery.image.tag=${{ github.sha }} \
+            --set airflow.image.tag=${{ github.sha }} \
+            --wait

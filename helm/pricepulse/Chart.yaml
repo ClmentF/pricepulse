@@ -1,0 +1,6 @@
+apiVersion: v2
+name: pricepulse
+description: Comparateur de prix e-commerce temps réel
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

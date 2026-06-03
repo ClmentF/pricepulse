@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer-postgres
+  labels:
+    {{- include "pricepulse.labels" . | nindent 4 }}
+    app: consumer-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consumer-postgres
+  template:
+    metadata:
+      labels:
+        app: consumer-postgres
+    spec:
+      serviceAccountName: pricepulse-workload-sa
+      containers:
+        - name: consumer-postgres
+          image: {{ .Values.consumers.postgres.image.repository }}:{{ .Values.consumers.postgres.image.tag }}
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: {{ include "pricepulse.kafkaBootstrap" . }}
+          envFrom:
+            - secretRef:
+                name: pricepulse-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+        # Cloud SQL Auth Proxy — expose PostgreSQL sur localhost:5432 dans le pod
+        # Auth via Workload Identity, zéro clé JSON
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - {{ .Values.gcp.cloudSqlInstance | quote }}
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
