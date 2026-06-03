@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
 
   # ── Infrastructure ────────────────────────────────────────────────────────
@@ -95,58 +93,40 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── App services (décommenter au fur et à mesure des étapes) ─────────────
-
   # ── COMMAND side ─────────────────────────────────────────────────────────
 
-  # consumer-normalisation:
-  #   build: ./command/consumers/normalisation
-  #   environment:
-  #     KAFKA_BOOTSTRAP: kafka:29092
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #   restart: unless-stopped
+  consumer-normalisation:
+    build: ./command/consumers/normalisation
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # consumer-postgres:
-  #   build: ./command/consumers/postgres
-  #   environment:
-  #     KAFKA_BOOTSTRAP: kafka:29092
-  #     DATABASE_URL: postgresql://pp_user:pp_pass@postgres:5432/pricepulse
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #     postgres:
-  #       condition: service_healthy
-  #   restart: unless-stopped
+  consumer-postgres:
+    build: ./command/consumers/postgres
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      DATABASE_URL: postgresql://pp_user:pp_pass@postgres:5432/pricepulse
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # consumer-bigquery:
-  #   build: ./command/consumers/bigquery
-  #   environment:
-  #     KAFKA_BOOTSTRAP: kafka:29092
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #   restart: unless-stopped
-
-  # ── QUERY side ────────────────────────────────────────────────────────────
-
-  # api:
-  #   build: ./query/api
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     DATABASE_URL: postgresql://pp_user:pp_pass@postgres:5432/pricepulse
-  #     KAFKA_BOOTSTRAP: kafka:29092
-  #     REDIS_URL: redis://redis:6379
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   restart: unless-stopped
+  consumer-bigquery:
+    build: ./command/consumers/bigquery
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      BIGQUERY_PROJECT: ${BIGQUERY_PROJECT:-pricepulse-gcp}
+      BIGQUERY_DATASET: ${BIGQUERY_DATASET:-pricepulse}
+      BIGQUERY_TABLE:   ${BIGQUERY_TABLE:-price_history}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
 
   nifi:
     image: apache/nifi:1.24.0
@@ -164,18 +144,49 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
-      start_period: 90s   # NiFi est lent à démarrer
+      start_period: 90s
 
-  # airflow:                             # étape 9
-  #   image: apache/airflow:2.8.0
-  #   ports:
-  #     - "8080:8080"
-  #   environment:
-  #     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-  #     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://pp_user:pp_pass@postgres:5432/pricepulse
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
+  airflow:
+    build: ./airflow
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./command:/opt/airflow/command   # accès aux scrapers depuis les DAGs
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://pp_user:pp_pass@postgres:5432/pricepulse
+      DATABASE_URL:          postgresql://pp_user:pp_pass@postgres:5432/pricepulse
+      KAFKA_BOOTSTRAP:       kafka:29092
+      BIGQUERY_PROJECT:      ${BIGQUERY_PROJECT:-pricepulse-gcp}
+      GCS_SNAPSHOT_BUCKET:   ${GCS_SNAPSHOT_BUCKET:-pricepulse-snapshots}
+      SENDGRID_API_KEY:      ${SENDGRID_API_KEY:-}
+      SLACK_WEBHOOK_URL:     ${SLACK_WEBHOOK_URL:-}
+      SCRAPERS_BASE_DIR:     /opt/airflow/command/scrapers
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── QUERY side ────────────────────────────────────────────────────────────
+
+  api:
+    build: ./query/api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL:    postgresql://pp_user:pp_pass@postgres:5432/pricepulse
+      KAFKA_BOOTSTRAP: kafka:29092
+      REDIS_URL:       redis://redis:6379
+      BIGQUERY_PROJECT: ${BIGQUERY_PROJECT:-pricepulse-gcp}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
