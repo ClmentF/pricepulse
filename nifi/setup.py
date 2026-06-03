@@ -122,11 +122,23 @@ def create_connection(
     return r.json()
 
 
+def get_processor(token: str, proc_id: str) -> dict:
+    r = requests.get(
+        f"{NIFI_BASE}/processors/{proc_id}",
+        headers=h(token),
+        verify=False,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def start_processor(token: str, proc: dict) -> None:
+    # Refetch la révision courante — NiFi l'incrémente après chaque modification
+    current = get_processor(token, proc["id"])
     requests.put(
         f"{NIFI_BASE}/processors/{proc['id']}/run-status",
         headers=h(token),
-        json={"revision": proc["revision"], "state": "RUNNING"},
+        json={"revision": current["revision"], "state": "RUNNING"},
         verify=False,
     ).raise_for_status()
 

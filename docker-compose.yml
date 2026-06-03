@@ -28,8 +28,10 @@ services:
       KAFKA_ADVERTISED_LISTENERS: EXTERNAL://localhost:9092,INTERNAL://kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1   # 1 broker en local
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"     # topics créés explicitement
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1          # 1 broker en local
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1  # requis pour les transactions NiFi
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1             # idem
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_RETENTION_HOURS: 24
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
@@ -173,7 +175,7 @@ services:
   api:
     build: ./query/api
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       DATABASE_URL:    postgresql://pp_user:pp_pass@postgres:5432/pricepulse
       KAFKA_BOOTSTRAP: kafka:29092

@@ -1,5 +1,6 @@
 # ── Specs / docs internes ─────────────────────────────────────────────────
 PRICEPULSE_SPECS.md
+ARCHITECTURE.md
 
 # ── Secrets & credentials ─────────────────────────────────────────────────
 .env

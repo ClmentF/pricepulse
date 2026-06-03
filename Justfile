@@ -73,7 +73,7 @@ db-shell:
 
 # Ouvre la doc Swagger
 api-docs:
-    xdg-open http://localhost:8000/docs 2>/dev/null || open http://localhost:8000/docs
+    xdg-open http://localhost:8001/docs 2>/dev/null || open http://localhost:8001/docs
 
 # ── Interfaces web ────────────────────────────────────────────────────────────
 

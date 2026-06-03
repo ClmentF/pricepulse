@@ -28,7 +28,7 @@ _SQL_UPSERT_PRODUCT = text("""
 
 _SQL_UPSERT_PRICE = text("""
     INSERT INTO current_prices (product_id, source, price, currency, url, scraped_at)
-    VALUES (:product_id, :source, :price, :currency, :url, :scraped_at::timestamp)
+    VALUES (:product_id, :source, :price, :currency, :url, CAST(:scraped_at AS timestamp))
     ON CONFLICT (product_id, source) DO UPDATE SET
         price      = EXCLUDED.price,
         currency   = EXCLUDED.currency,
