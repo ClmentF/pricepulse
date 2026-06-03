@@ -148,16 +148,23 @@ services:
   #       condition: service_healthy
   #   restart: unless-stopped
 
-  # nifi:                                # étape 6
-  #   image: apache/nifi:1.24.0
-  #   ports:
-  #     - "8443:8443"
-  #   environment:
-  #     SINGLE_USER_CREDENTIALS_USERNAME: admin
-  #     SINGLE_USER_CREDENTIALS_PASSWORD: adminadminadmin
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
+  nifi:
+    image: apache/nifi:1.24.0
+    ports:
+      - "8443:8443"   # UI + REST API (HTTPS)
+      - "8082:8082"   # ListenHTTP processor (HTTP, reçoit les scrapers)
+    environment:
+      SINGLE_USER_CREDENTIALS_USERNAME: admin
+      SINGLE_USER_CREDENTIALS_PASSWORD: adminadminadmin
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:8443/nifi-api/system-diagnostics"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s   # NiFi est lent à démarrer
 
   # airflow:                             # étape 9
   #   image: apache/airflow:2.8.0
